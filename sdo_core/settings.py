@@ -85,8 +85,12 @@ DEFAULT_PARSER_CLASSES = [
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'sdo.sql',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'sdo_db',
+        'USER': 'sdo_admin',
+        'PASSWORD': 'sdo_admin',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
 

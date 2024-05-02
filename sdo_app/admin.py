@@ -1,3 +1,20 @@
 from django.contrib import admin
+from sdo_app.models import (Student, Subject, StudyGroup, StudentResult, Person, Program, Department, Major, Teacher,
+                            Practice, Lecture, Module, Course, Chair, EvaluationTest, QuestionSection)
 
-# Register your models here.
+admin.site.register(Chair)
+admin.site.register(Course)
+admin.site.register(Department)
+admin.site.register(EvaluationTest)
+admin.site.register(Lecture)
+admin.site.register(Major)
+admin.site.register(Module)
+admin.site.register(Person)
+admin.site.register(Program)
+admin.site.register(Practice)
+admin.site.register(Subject)
+admin.site.register(StudyGroup)
+admin.site.register(Student)
+admin.site.register(StudentResult)
+admin.site.register(Teacher)
+admin.site.register(QuestionSection)
