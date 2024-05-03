@@ -3,6 +3,7 @@ from django.core.validators import FileExtensionValidator
 from django.utils.translation import gettext_lazy as _
 from django.db import models
 
+from .utils import *
 from validators import *
 
 
@@ -62,6 +63,7 @@ class Student(Person):
 
 class Teacher(Person):
     position = models.CharField(_('Должность'), max_length=100)
+    department = models.ForeignKey(Department, on_delete=models.RESTRICT, verbose_name='Кафедра')
 
 
 class StudyGroup(models.Model):
@@ -77,47 +79,6 @@ class StudyGroup(models.Model):
 
     def __str__(self) -> str:
         return self.name
-
-
-def course_dir_path(instance, filename) -> str:
-    module = instance.module_lectures.all()[0]
-    course = module.course_modules.all()[0]
-    return f'courses/{course}/module_{module}/lecture_{instance}/{filename}'
-
-
-def answer_file_path(instance, filename) -> str:
-    module = instance.module_lectures.all()[0]
-    course = module.course_modules.all()[0]
-
-    if instance.by_lecture:
-        return f'courses/{course}/module_{module}/practice_{instance}/lecture_{instance.by_lecture}/{filename}'
-
-    return f'courses/{course}/module_{module}/practice_{instance}/{filename}'
-
-
-def description_file_path(instance, filename) -> str:
-    return answer_file_path(instance, filename)
-
-
-def question_file_path(instance, filename) -> str:
-    evaluation_test = instance.evaluation_test
-
-    if evaluation_test.by_lecture:
-        module = evaluation_test.by_lecture.module_lectures.all()[0]
-        course = module.course_modules.all()[0]
-        return (f'courses/{course}/module_{module}/lecture_{evaluation_test.by_lecture}'
-                f'/evaluation_test_{evaluation_test}/{filename}')
-
-    if evaluation_test.by_module:
-        course = evaluation_test.by_module.course_modules.all()[0]
-        return f'courses/{course}/module_{evaluation_test.by_module}/evaluation_test_{evaluation_test}/{filename}'
-
-    if evaluation_test.by_course:
-        return f'courses/{evaluation_test.by_course}/evaluation_test_{evaluation_test}/{filename}'
-
-
-def eval_criteria_file_path(instance, filename) -> str:
-    return f'courses/{instance}/{filename}'
 
 
 class Lecture(models.Model):
@@ -172,8 +133,6 @@ class Module(models.Model):
 
 class Course(models.Model):
     title = models.TextField(_('Наименование курса'))
-    chair = models.ForeignKey(Chair, on_delete=models.RESTRICT, verbose_name='Институт/факультет')
-    department = models.ForeignKey(Department, on_delete=models.RESTRICT, verbose_name='Кафедра')
     teacher = models.ForeignKey(Teacher, on_delete=models.RESTRICT, verbose_name='Преподаватель')
     majors = models.ManyToManyField(Major, related_name='course_majors', verbose_name='Направления подготовки')
     evaluation_criteria = models.FileField(_('Критерии оценивания'), upload_to=eval_criteria_file_path,
