@@ -42,3 +42,22 @@ def validate_question_file(value):
     for key in question.keys():
         if key not in ['question', 'answers', 'correct_answers']:
             raise ValidationError(f'Unexpected key \'{key}\', must be \'question\', \'answers\', \'correct_answers\'.')
+
+
+def validate_deadline_date(value):
+    from django.utils import timezone
+    from django.core.exceptions import ValidationError
+
+    if value < timezone.now():
+        raise ValidationError('Deadline date cannot be in the past.')
+
+    if value == timezone.now():
+        raise ValidationError('Deadline date cannot be equal to now.')
+
+
+def validate_positive_score(value):
+    from django.core.exceptions import ValidationError
+
+    if value < 0:
+        raise ValidationError('Positive score must be greater than or equal to 0.')
+

@@ -88,7 +88,10 @@ class PracticeSerializer(serializers.ModelSerializer):
 
 
 class CourseSerializer(serializers.ModelSerializer):
-    teacher = TeacherSerializer()
+    teacher = serializers.PrimaryKeyRelatedField(queryset=Teacher.objects.all())
+    majors = serializers.PrimaryKeyRelatedField(many=True, queryset=Major.objects.all())
+    members = serializers.PrimaryKeyRelatedField(many=True, queryset=Person.objects.all())
+    modules = serializers.PrimaryKeyRelatedField(many=True, queryset=Module.objects.all())
 
     class Meta:
         model = Course
