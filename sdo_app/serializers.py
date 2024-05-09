@@ -106,7 +106,7 @@ class EvaluationTestSerializer(serializers.ModelSerializer):
     class Meta:
         model = EvaluationTest
         fields = ['id', 'title', 'by_course', 'by_lecture', 'by_module', 'max_score', 'question_sections',
-                  'deadline_date', 'start_time', 'end_time', 'allowed_attempts', 'student_attempts', 'complete_time']
+                  'deadline_date', 'start_time', 'end_time', 'allowed_attempts', 'complete_time']
 
 
 class StudentResultSerializer(serializers.ModelSerializer):
@@ -116,7 +116,8 @@ class StudentResultSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StudentResult
-        fields = ['id', 'student', 'practice', 'evaluation_test', 'is_completed', 'answer_file', 'answer_text', 'score']
+        fields = ['id', 'student', 'practice', 'evaluation_test', 'is_completed', 'answer_file', 'answer_text', 'score',
+                  'attempt']
 
 
 class QuestionSectionSerializer(serializers.ModelSerializer):

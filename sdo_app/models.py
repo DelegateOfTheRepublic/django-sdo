@@ -1,10 +1,12 @@
 from django.contrib.auth.models import User
 from django.core.validators import FileExtensionValidator
+from django.db.models import QuerySet
 from django.utils.translation import gettext_lazy as _
 from django.db import models
 
-from .utils import *
-from validators import *
+from .utils import course_dir_path, description_file_path, answer_file_path, eval_criteria_file_path
+from validators import validate_deadline_date, validate_lecture_materials_file, validate_positive_score, \
+    validate_eval_criteria_file
 
 
 class Subject(models.Model):
@@ -87,29 +89,45 @@ class Lecture(models.Model):
     deadline_date = models.DateField(_('Крайний срок завершения'), validators=[validate_deadline_date])
     materials = models.FileField(_('Материалы лекции'), upload_to=course_dir_path, blank=True,
                                  validators=[FileExtensionValidator(['json']), validate_lecture_materials_file])
+    practice = models.ForeignKey('sdo_app.Practice', on_delete=models.RESTRICT, blank=True, null=True,
+                                 verbose_name='Задание/еонтрольная работа')
+    evaluation_test = models.ForeignKey('sdo_app.EvaluationTest', on_delete=models.RESTRICT, blank=True, null=True,
+                                        verbose_name='Оценочный тест')
 
     def __str__(self) -> str:
         return self.title
 
 
 class Practice(models.Model):
+    class FinalScoreIs(models.TextChoices):
+        BEST_ATTEMPT = 'BA', 'Лучшаяя попытка'
+        LAST_ATTEMPT = 'LA', 'Последняя попытка'
+
     title = models.TextField(_('Наименование задания'))
     max_score = models.FloatField(_('Максимальный балл'), default=0.0, validators=[validate_positive_score])
-    by_lecture = models.ForeignKey(Lecture, on_delete=models.RESTRICT, blank=True, null=True, verbose_name='По лекции')
-    by_module = models.ForeignKey('sdo_app.Module', on_delete=models.RESTRICT, blank=True, null=True,
-                                  verbose_name='По модулю')
     description = models.FileField(_('Описание задания'), upload_to=description_file_path,
                                    validators=[FileExtensionValidator(['json'])])
     deadline_date = models.DateField(_('Крайний срок сдачи'), validators=[validate_deadline_date])
+    final_score_is = models.CharField(max_length=2, default=FinalScoreIs.BEST_ATTEMPT, choices=FinalScoreIs.choices,
+                                      verbose_name='Конечный результат учитывается, как')
 
     def __str__(self) -> str:
         return self.title
 
-    @property
-    def student_score(self) -> float:
-        student_result_obj: StudentResult = StudentResult.objects.filter(practice_id=self.id).first()
+    def get_student_score(self, by_course: bool = False) -> float | None:
+        student_results: QuerySet[StudentResult] = StudentResult.objects.filter(practice_id=self.id)
 
-        return student_result_obj.score if student_result_obj else 0
+        if by_course:
+            course: QuerySet[Course] = Course.objects.filter(practice_id=self.id).first()
+            student_results = student_results.filter(course=course).first()
+
+        if not student_results:
+            return None
+
+        if self.final_score_is == self.FinalScoreIs.BEST_ATTEMPT:
+            return student_results.order_by('-score').first().score
+
+        return student_results.last().score
 
 
 class StudentResult(models.Model):
@@ -123,6 +141,7 @@ class StudentResult(models.Model):
                                    validators=[FileExtensionValidator(['json'])], blank=True)
     answer_text = models.TextField(_('Ответ на задание в виде текста'), blank=True)
     score = models.FloatField(_('Полученный балл'), blank=True, default=0.0, validators=[validate_positive_score])
+    attempt = models.IntegerField(_('Попытка №'), default=1)
 
     def __str__(self) -> str:
         if self.evaluation_test:
@@ -134,8 +153,10 @@ class StudentResult(models.Model):
 class Module(models.Model):
     title = models.CharField(_('Наименование модуля'), max_length=32)
     lectures = models.ManyToManyField(Lecture, related_name='module_lectures', verbose_name='Лекции', blank=True)
-    practices = models.ManyToManyField(Practice, related_name='module_practices',
-                                       verbose_name='Практические задания/контрольные', blank=True)
+    practice = models.ForeignKey(Practice, on_delete=models.RESTRICT, verbose_name='Контрольная работа',
+                                 blank=True)
+    evaluation_test = models.ForeignKey('sdo_app.EvaluationTest', on_delete=models.RESTRICT,
+                                        verbose_name='Контрольный тест', blank=True)
 
     def __str__(self) -> str:
         return self.title
@@ -147,8 +168,12 @@ class Course(models.Model):
     majors = models.ManyToManyField(Major, related_name='course_majors', verbose_name='Направления подготовки')
     evaluation_criteria = models.FileField(_('Критерии оценивания'), upload_to=eval_criteria_file_path,
                                            validators=[validate_eval_criteria_file])
-    members = models.ManyToManyField(Student, related_name='course_members', verbose_name='Участники курса')
+    members = models.ManyToManyField(StudyGroup, related_name='course_members', verbose_name='Участники курса')
     modules = models.ManyToManyField(Module, related_name='course_modules', verbose_name='Модули')
+    practice = models.ForeignKey(Practice, on_delete=models.RESTRICT, blank=True, null=True,
+                                 verbose_name='Итоговая работа')
+    evaluation_test = models.ForeignKey('sdo_app.EvaluationTest', on_delete=models.RESTRICT, blank=True, null=True,
+                                        verbose_name='Итоговый тест')
 
     def __str__(self) -> str:
         return f'{self.title} для {', '.join(major.__str__() for major in self.majors.all())}'
@@ -157,27 +182,62 @@ class Course(models.Model):
 class QuestionSection(models.Model):
     evaluation_test = models.ForeignKey('sdo_app.EvaluationTest', on_delete=models.RESTRICT,
                                         verbose_name='Оценочный тест')
-    max_score = models.FloatField(_('Максимальный балл'), default=0.0, validators=[validate_positive_score])
-    question_file = models.FileField(_('Вопрос с ответами'), upload_to=question_file_path,
-                                     validators=[validate_question_file])
+    question = models.TextField(verbose_name='Вопрос')
 
     def __str__(self) -> str:
         return f'Вопрос по тесту {self.evaluation_test}'
 
+    @property
+    def max_score(self) -> float:
+        question_answers: QuerySet[QuestionAnswers] = QuestionAnswers.objects.filter(question_section_id=self.id)
+        return sum(question_answer.score for question_answer in question_answers)
+
+
+class QuestionAnswers(models.Model):
+    question_section = models.ForeignKey(QuestionSection, on_delete=models.CASCADE, verbose_name='Блок вопроса')
+    answer = models.TextField(verbose_name='Ответ на вопрос')
+    is_correct = models.BooleanField(default=False, verbose_name='Это верный ответ')
+    score = models.FloatField(default=0.0, verbose_name='Получаемый балл', validators=[validate_positive_score])
+
 
 class EvaluationTest(models.Model):
+    class FinalScoreIs(models.TextChoices):
+        BEST_ATTEMPT = 'BA', 'Лучшаяя попытка'
+        LAST_ATTEMPT = 'LA', 'Последняя попытка'
+
     title = models.TextField(_('Наименование оценочной работы'))
-    by_course = models.ForeignKey(Course, on_delete=models.RESTRICT, blank=True, verbose_name='По курсу')
-    by_lecture = models.ForeignKey(Lecture, on_delete=models.RESTRICT, blank=True, verbose_name='По лекции')
-    by_module = models.ForeignKey(Module, on_delete=models.RESTRICT, blank=True, verbose_name='По модулю')
-    max_score = models.FloatField(_('Максимальный балл'), default=0.0, validators=[validate_positive_score])
     question_sections = models.ManyToManyField(QuestionSection, related_name='questions', verbose_name='Вопросы')
     deadline_date = models.DateField(_('Крайний срок сдачи'), validators=[validate_deadline_date])
     start_time = models.DateTimeField(_('Дата начала оценочной работы студентом'))
     end_time = models.DateTimeField(_('Дата завершения оценочной работы студентом'))
     allowed_attempts = models.IntegerField(_('Разрешенное количество попыток'), default=1)
-    student_attempts = models.IntegerField(_('Израсходованно попыток'))
     complete_time = models.IntegerField(_('Время на выполнение(мин.)'))
+    final_score_is = models.CharField(max_length=2, default=FinalScoreIs.BEST_ATTEMPT, choices=FinalScoreIs.choices,
+                                      verbose_name='Конечный результат учитывается, как')
 
     def __str__(self) -> str:
         return self.title
+
+    @property
+    def max_score(self) -> float:
+        question_sections: QuerySet[QuestionSection] = QuestionSection.objects.filter(evaluation_test_id=self.id)
+
+        if not question_sections:
+            return 0
+
+        return sum(question_section.max_score for question_section in question_sections)
+
+    def get_student_score(self, by_course: bool = False) -> float | None:
+        student_results: QuerySet[StudentResult] = StudentResult.objects.filter(evaluation_test_id=self.id)
+
+        if by_course:
+            course: QuerySet[Course] = Course.objects.filter(evaluation_test_id=self.id).first()
+            student_results = student_results.filter(course=course).first()
+
+        if not student_results:
+            return None
+
+        if self.final_score_is == self.FinalScoreIs.BEST_ATTEMPT:
+            return student_results.order_by('-score').first().score
+
+        return student_results.last().score
