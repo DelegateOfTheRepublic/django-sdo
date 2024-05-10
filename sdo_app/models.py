@@ -9,6 +9,35 @@ from validators import validate_deadline_date, validate_lecture_materials_file, 
     validate_eval_criteria_file
 
 
+class BaseTask(models.Model):
+    class Meta:
+        abstract = True
+
+    class ScoreBy(models.TextChoices):
+        COURSE = 'by_course', 'По курсу'
+        MODULE = 'by_module', 'По модулю'
+        LECTURE = 'by_lecture', 'По лекции'
+
+    class FinalScoreIs(models.TextChoices):
+        BEST_ATTEMPT = 'BA', 'Лучшаяя попытка'
+        LAST_ATTEMPT = 'LA', 'Последняя попытка'
+
+    deadline_date = models.DateField(_('Крайний срок сдачи'), validators=[validate_deadline_date])
+    final_score_is = models.CharField(max_length=2, default=FinalScoreIs.BEST_ATTEMPT, choices=FinalScoreIs.choices,
+                                      verbose_name='Конечный результат оценивается, как')
+
+    def get_student_score(self, student_id: int, score_by: dict[ScoreBy, int]) -> float | None:
+        student_results: QuerySet[StudentResult] = StudentResult.objects.filter(student_id=student_id, **score_by)
+
+        if not student_results:
+            return None
+
+        if self.final_score_is == self.FinalScoreIs.BEST_ATTEMPT:
+            return student_results.order_by('-score').first().score
+
+        return student_results.last().score
+
+
 class Subject(models.Model):
     name = models.CharField(_('Наименование дисциплины'), max_length=100)
 
@@ -98,44 +127,24 @@ class Lecture(models.Model):
         return self.title
 
 
-class Practice(models.Model):
-    class FinalScoreIs(models.TextChoices):
-        BEST_ATTEMPT = 'BA', 'Лучшаяя попытка'
-        LAST_ATTEMPT = 'LA', 'Последняя попытка'
-
+class Practice(BaseTask):
     title = models.TextField(_('Наименование задания'))
     max_score = models.FloatField(_('Максимальный балл'), default=0.0, validators=[validate_positive_score])
     description = models.FileField(_('Описание задания'), upload_to=description_file_path,
                                    validators=[FileExtensionValidator(['json'])])
-    deadline_date = models.DateField(_('Крайний срок сдачи'), validators=[validate_deadline_date])
-    final_score_is = models.CharField(max_length=2, default=FinalScoreIs.BEST_ATTEMPT, choices=FinalScoreIs.choices,
-                                      verbose_name='Конечный результат учитывается, как')
 
     def __str__(self) -> str:
         return self.title
 
-    def get_student_score(self, by_course: bool = False) -> float | None:
-        student_results: QuerySet[StudentResult] = StudentResult.objects.filter(practice_id=self.id)
-
-        if by_course:
-            course: QuerySet[Course] = Course.objects.filter(practice_id=self.id).first()
-            student_results = student_results.filter(course=course).first()
-
-        if not student_results:
-            return None
-
-        if self.final_score_is == self.FinalScoreIs.BEST_ATTEMPT:
-            return student_results.order_by('-score').first().score
-
-        return student_results.last().score
-
 
 class StudentResult(models.Model):
     student = models.ForeignKey(Student, on_delete=models.RESTRICT, verbose_name='Студент')
-    course = models.ForeignKey('sdo_app.Course', on_delete=models.RESTRICT, verbose_name='Проходимый курс')
-    practice = models.ForeignKey(Practice, on_delete=models.RESTRICT, verbose_name='Задание', blank=True)
-    evaluation_test = models.ForeignKey('sdo_app.EvaluationTest', on_delete=models.RESTRICT,
-                                        verbose_name='Оценочный тест', blank=True)
+    by_course = models.ForeignKey('sdo_app.Course', on_delete=models.RESTRICT, verbose_name='По курсу', blank=True,
+                                  null=True)
+    by_module = models.ForeignKey('sdo_app.Module', on_delete=models.RESTRICT, verbose_name='По модулю', blank=True,
+                                  null=True)
+    by_lecture = models.ForeignKey('sdo_app.Lecture', on_delete=models.RESTRICT, verbose_name='По лекции', blank=True,
+                                   null=True)
     is_completed = models.BooleanField(default=False, verbose_name='Выполнено ли задание?')
     answer_file = models.FileField(_('Ответ на задание в виде файла'), upload_to=answer_file_path,
                                    validators=[FileExtensionValidator(['json'])], blank=True)
@@ -144,10 +153,27 @@ class StudentResult(models.Model):
     attempt = models.IntegerField(_('Попытка №'), default=1)
 
     def __str__(self) -> str:
-        if self.evaluation_test:
-            return f'Очки студента {self.student} по тесту {self.evaluation_test}'
+        to_print: str = f'Баллы студента {self.student} по XXX {self.by_course or self.by_module or self.by_lecture}'
 
-        return f'Очки студента {self.student} по заданию {self.practice}'
+        if self.by_course:
+            if self.by_course.evaluation_test:
+                to_print = to_print.replace('XXX', 'итоговому тесту курса')
+
+            to_print = to_print.replace('XXX', 'итоговой работе курса')
+
+        if self.by_module:
+            if self.by_module.evaluation_test:
+                to_print = to_print.replace('XXX', 'итоговому тесту модуля')
+
+            to_print = to_print.replace('XXX', 'итоговой работе модуля')
+
+        if self.by_lecture:
+            if self.by_lecture.evaluation_test:
+                to_print = to_print.replace('XXX', 'итоговому тесту лекции')
+
+            to_print = to_print.replace('XXX', 'итоговой работу лекции')
+
+        return to_print
 
 
 class Module(models.Model):
@@ -200,20 +226,13 @@ class QuestionAnswers(models.Model):
     score = models.FloatField(default=0.0, verbose_name='Получаемый балл', validators=[validate_positive_score])
 
 
-class EvaluationTest(models.Model):
-    class FinalScoreIs(models.TextChoices):
-        BEST_ATTEMPT = 'BA', 'Лучшаяя попытка'
-        LAST_ATTEMPT = 'LA', 'Последняя попытка'
-
+class EvaluationTest(BaseTask):
     title = models.TextField(_('Наименование оценочной работы'))
     question_sections = models.ManyToManyField(QuestionSection, related_name='questions', verbose_name='Вопросы')
-    deadline_date = models.DateField(_('Крайний срок сдачи'), validators=[validate_deadline_date])
     start_time = models.DateTimeField(_('Дата начала оценочной работы студентом'))
     end_time = models.DateTimeField(_('Дата завершения оценочной работы студентом'))
     allowed_attempts = models.IntegerField(_('Разрешенное количество попыток'), default=1)
     complete_time = models.IntegerField(_('Время на выполнение(мин.)'))
-    final_score_is = models.CharField(max_length=2, default=FinalScoreIs.BEST_ATTEMPT, choices=FinalScoreIs.choices,
-                                      verbose_name='Конечный результат учитывается, как')
 
     def __str__(self) -> str:
         return self.title
@@ -226,18 +245,3 @@ class EvaluationTest(models.Model):
             return 0
 
         return sum(question_section.max_score for question_section in question_sections)
-
-    def get_student_score(self, by_course: bool = False) -> float | None:
-        student_results: QuerySet[StudentResult] = StudentResult.objects.filter(evaluation_test_id=self.id)
-
-        if by_course:
-            course: QuerySet[Course] = Course.objects.filter(evaluation_test_id=self.id).first()
-            student_results = student_results.filter(course=course).first()
-
-        if not student_results:
-            return None
-
-        if self.final_score_is == self.FinalScoreIs.BEST_ATTEMPT:
-            return student_results.order_by('-score').first().score
-
-        return student_results.last().score
