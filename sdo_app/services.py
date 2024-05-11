@@ -5,11 +5,11 @@ from django.db.models import QuerySet
 from rest_framework.serializers import Serializer
 
 from .models import (Chair, Course, Department, EvaluationTest, Lecture, Major, Module, Person, Program, Practice,
-                     Subject, Student, StudentResult, StudyGroup, Teacher, QuestionSection)
+                     Subject, Student, StudentResult, StudyGroup, Teacher, QuestionSection, QuestionAnswers)
 from .serializers import (ChairSerializer, CourseSerializer, DepartmentSerializer, EvaluationTestSerializer,
                           LectureSerializer, MajorSerializer, ModuleSerializer, PersonSerializer, ProgramSerializer,
                           PracticeSerializer, SubjectSerializer, StudentSerializer, StudentResultSerializer,
-                          StudyGroupSerializer, TeacherSerializer, QuestionSectionSerializer)
+                          StudyGroupSerializer, TeacherSerializer, QuestionSectionSerializer, QuestionAnswersSerializer)
 
 
 class BaseService:
@@ -39,6 +39,10 @@ class BaseService:
 
     def delete(self, pk: int):
         return self.__model__.objects.get(pk=pk).delete()
+
+    @property
+    def serializer(self) -> Type[Serializer]:
+        return self.__serializer__
 
 
 class ChairService(BaseService):
@@ -119,3 +123,8 @@ class TeacherService(BaseService):
 class QuestionSectionService(BaseService):
     def __init__(self):
         super().__init__(QuestionSection, QuestionSectionSerializer)
+
+
+class QuestionAnswersService(BaseService):
+    def __init__(self):
+        super().__init__(QuestionAnswers, QuestionAnswersSerializer)
