@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (Chair, Course, Department, EvaluationTest, Lecture, Major, Module, Person, Program, Practice,
-                     Subject, StudentResult, StudyGroup, Teacher, QuestionSection)
+                     Subject, StudentResult, StudyGroup, Teacher, QuestionSection, Student, QuestionAnswers)
 
 
 class ChairSerializer(serializers.ModelSerializer):
@@ -10,7 +10,7 @@ class ChairSerializer(serializers.ModelSerializer):
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
-    chair = ChairSerializer()
+    chair = serializers.PrimaryKeyRelatedField(queryset=Chair.objects.all())
 
     class Meta:
         model = Department
@@ -24,7 +24,7 @@ class SubjectSerializer(serializers.ModelSerializer):
 
 
 class ProgramSerializer(serializers.ModelSerializer):
-    department = DepartmentSerializer()
+    department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all())
 
     class Meta:
         model = Program
@@ -32,6 +32,8 @@ class ProgramSerializer(serializers.ModelSerializer):
 
 
 class MajorSerializer(serializers.ModelSerializer):
+    programs = serializers.PrimaryKeyRelatedField(many=True, queryset=Program.objects.all())
+
     class Meta:
         model = Major
         fields = '__all__'
@@ -51,7 +53,7 @@ class StudentSerializer(PersonSerializer):
 
 class TeacherSerializer(serializers.ModelSerializer):
     email = serializers.CharField(source='user.email')
-    department = DepartmentSerializer()
+    department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all())
 
     class Meta:
         model = Teacher
@@ -59,7 +61,7 @@ class TeacherSerializer(serializers.ModelSerializer):
 
 
 class StudyGroupSerializer(serializers.ModelSerializer):
-    major = MajorSerializer()
+    major = serializers.PrimaryKeyRelatedField(queryset=Major.objects.all())
 
     class Meta:
         model = StudyGroup
@@ -67,62 +69,76 @@ class StudyGroupSerializer(serializers.ModelSerializer):
 
 
 class ModuleSerializer(serializers.ModelSerializer):
+    lectures = serializers.PrimaryKeyRelatedField(many=True, queryset=Lecture.objects.all())
+    practice = serializers.PrimaryKeyRelatedField(queryset=Practice.objects.all())
+    evaluation_test = serializers.PrimaryKeyRelatedField(queryset=EvaluationTest.objects.all())
+
     class Meta:
         model = Module
-        fields = '__all__'
+        fields = ['id', 'title', 'lectures', 'practice', 'evaluation_test']
 
 
 class LectureSerializer(serializers.ModelSerializer):
+    practice = serializers.PrimaryKeyRelatedField(queryset=Practice.objects.all())
+    evaluation_test = serializers.PrimaryKeyRelatedField(queryset=EvaluationTest.objects.all())
+
     class Meta:
         model = Lecture
-        fields = '__all__'
+        fields = ['id', 'title', 'is_read', 'deadline_date', 'materials', 'practice', 'evaluation_test']
 
 
 class PracticeSerializer(serializers.ModelSerializer):
-    by_lecture = LectureSerializer()
-    by_module = ModuleSerializer()
-
     class Meta:
         model = Practice
-        fields = ['id', 'title', 'max_score', 'by_lecture', 'by_module', 'description', 'deadline_date']
+        fields = '__all__'
 
 
 class CourseSerializer(serializers.ModelSerializer):
     teacher = serializers.PrimaryKeyRelatedField(queryset=Teacher.objects.all())
     majors = serializers.PrimaryKeyRelatedField(many=True, queryset=Major.objects.all())
-    members = serializers.PrimaryKeyRelatedField(many=True, queryset=Person.objects.all())
+    members = serializers.PrimaryKeyRelatedField(many=True, queryset=StudyGroup.objects.all())
     modules = serializers.PrimaryKeyRelatedField(many=True, queryset=Module.objects.all())
+    practice = serializers.PrimaryKeyRelatedField(queryset=Practice.objects.all())
+    evaluation_test = serializers.PrimaryKeyRelatedField(queryset=EvaluationTest.objects.all())
 
     class Meta:
         model = Course
-        fields = ['id', 'title', 'teacher', 'majors', 'evaluation_criteria', 'members', 'modules']
+        fields = ['id', 'title', 'teacher', 'majors', 'evaluation_criteria', 'members', 'modules', 'practice',
+                  'evaluation_test']
 
 
 class EvaluationTestSerializer(serializers.ModelSerializer):
-    by_lecture = LectureSerializer()
-    by_module = ModuleSerializer()
-    by_course = CourseSerializer()
+    question_sections = serializers.PrimaryKeyRelatedField(many=True, queryset=QuestionSection.objects.all())
 
     class Meta:
         model = EvaluationTest
-        fields = ['id', 'title', 'by_course', 'by_lecture', 'by_module', 'max_score', 'question_sections',
-                  'deadline_date', 'start_time', 'end_time', 'allowed_attempts', 'complete_time']
+        fields = ['id', 'title', 'max_score', 'question_sections', 'deadline_date', 'start_time', 'end_time',
+                  'allowed_attempts', 'complete_time', 'final_score_is']
 
 
 class StudentResultSerializer(serializers.ModelSerializer):
-    student = StudentSerializer()
-    practice = PracticeSerializer()
-    evaluation_test = EvaluationTestSerializer()
+    student = serializers.PrimaryKeyRelatedField(queryset=Student.objects.all())
+    by_course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all())
+    by_module = serializers.PrimaryKeyRelatedField(queryset=Module.objects.all())
+    by_lecture = serializers.PrimaryKeyRelatedField(queryset=Lecture.objects.all())
 
     class Meta:
         model = StudentResult
-        fields = ['id', 'student', 'practice', 'evaluation_test', 'is_completed', 'answer_file', 'answer_text', 'score',
-                  'attempt']
+        fields = ['id', 'student', 'by_course', 'by_module', 'by_lecture', 'is_completed', 'answer_file', 'answer_text',
+                  'score', 'attempt']
 
 
 class QuestionSectionSerializer(serializers.ModelSerializer):
-    evaluation_test = EvaluationTestSerializer()
+    evaluation_test = serializers.PrimaryKeyRelatedField(queryset=EvaluationTest.objects.all())
 
     class Meta:
         model = QuestionSection
-        fields = ['id', 'evaluation_test', 'max_score', 'question_file']
+        fields = ['id', 'evaluation_test', 'question']
+
+
+class QuestionAnswersSerializer(serializers.ModelSerializer):
+    question_section = serializers.PrimaryKeyRelatedField(queryset=QuestionSection.objects.all())
+
+    class Meta:
+        model = QuestionAnswers
+        fields = ['id', 'question_section', 'answer', 'is_correct', 'score']

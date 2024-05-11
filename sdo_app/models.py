@@ -93,7 +93,13 @@ class Student(Person):
 
 
 class Teacher(Person):
-    position = models.CharField(_('Должность'), max_length=100)
+    class Position(models.TextChoices):
+        PROF = 'PF', 'Профессор'
+        DOCENT = 'DC', 'Доцент'
+        SENIOR_LECTURER = 'SL', 'Старший преподаватель'
+        ASSISTANT = 'AS', 'Ассистент'
+
+    position = models.CharField(_('Должность'), max_length=2, choices=Position.choices, default=Position.DOCENT)
     department = models.ForeignKey(Department, on_delete=models.RESTRICT, verbose_name='Кафедра')
 
 
