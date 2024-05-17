@@ -45,13 +45,14 @@ def validate_question_file(value):
 
 
 def validate_deadline_date(value):
-    from django.utils import timezone
+    import datetime
+    from django.utils import timezone, dateparse
     from django.core.exceptions import ValidationError
 
-    if value < timezone.now():
+    if value < timezone.now().date():
         raise ValidationError('Deadline date cannot be in the past.')
 
-    if value == timezone.now():
+    if value == timezone.now().date():
         raise ValidationError('Deadline date cannot be equal to now.')
 
 

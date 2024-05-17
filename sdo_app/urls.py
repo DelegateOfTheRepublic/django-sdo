@@ -1,7 +1,8 @@
 from django.urls import re_path
 
-from sdo_app.views import ChairAPIView, SubjectAPIView, DepartmentAPIView, ProgramAPIView, MajorAPIView, StudentAPIView, \
-    TeacherAPIView, StudyGroupAPIView
+from sdo_app.views import (ChairAPIView, SubjectAPIView, DepartmentAPIView, ProgramAPIView, MajorAPIView,
+                           StudentAPIView, TeacherAPIView, StudyGroupAPIView, StudentResultAPIView,
+                           EvaluationTestAPIView, QuestionAnswersAPIView, QuestionSectionAPIView)
 
 urlpatterns = [
     re_path(r'^chairs/', ChairAPIView.as_view(), name='chair-list'),
@@ -20,4 +21,12 @@ urlpatterns = [
     re_path(r'^teachers/<id:int>', TeacherAPIView.as_view(), name='teacher-detail'),
     re_path(r'^study_groups/', StudyGroupAPIView.as_view(), name='study-group-list'),
     re_path(r'^study_groups/<id:int>', StudyGroupAPIView.as_view(), name='study-group-detail'),
+    re_path(r'^student_results/', StudentResultAPIView.as_view(), name='student-result-list'),
+    re_path(r'^student_results/<id:int>', StudentResultAPIView.as_view(), name='student-result-detail'),
+    re_path(r'^e_tests/', EvaluationTestAPIView.as_view(), name='evaluation-test-list'),
+    re_path(r'^e_tests/<id:int>', EvaluationTestAPIView.as_view(), name='evaluation-test-detail'),
+    re_path(r'^questions/', QuestionSectionAPIView.as_view(), name='question-section-list'),
+    re_path(r'^questions/<id:int>', QuestionSectionAPIView.as_view(), name='question-section-detail'),
+    re_path(r'^answers/', QuestionAnswersAPIView.as_view(), name='question-answer-list'),
+    re_path(r'^answers/<id:int>', QuestionAnswersAPIView.as_view(), name='question-answer-detail')
 ]

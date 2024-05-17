@@ -108,11 +108,9 @@ class CourseSerializer(serializers.ModelSerializer):
 
 
 class EvaluationTestSerializer(serializers.ModelSerializer):
-    question_sections = serializers.PrimaryKeyRelatedField(many=True, queryset=QuestionSection.objects.all())
-
     class Meta:
         model = EvaluationTest
-        fields = ['id', 'title', 'max_score', 'question_sections', 'deadline_date', 'start_time', 'end_time',
+        fields = ['id', 'title', 'max_score', 'deadline_date', 'start_time', 'end_time',
                   'allowed_attempts', 'complete_time', 'final_score_is']
 
 
@@ -130,10 +128,14 @@ class StudentResultSerializer(serializers.ModelSerializer):
 
 class QuestionSectionSerializer(serializers.ModelSerializer):
     evaluation_test = serializers.PrimaryKeyRelatedField(queryset=EvaluationTest.objects.all())
+    answers = serializers.SerializerMethodField('get_answers', read_only=True)
 
     class Meta:
         model = QuestionSection
-        fields = ['id', 'evaluation_test', 'question']
+        fields = ['id', 'evaluation_test', 'question', 'answers']
+
+    def get_answers(self, obj: QuestionSection):
+        return QuestionAnswersSerializer(QuestionAnswers.objects.filter(question_section_id=obj.id), many=True).data
 
 
 class QuestionAnswersSerializer(serializers.ModelSerializer):

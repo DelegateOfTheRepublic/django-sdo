@@ -39,7 +39,7 @@ class BaseTask(models.Model):
 
 
 class Subject(models.Model):
-    name = models.CharField(_('Наименование дисциплины'), max_length=100)
+    name = models.CharField(_('Наименование дисциплины'), max_length=100, unique=True)
 
     def __str__(self) -> str:
         return self.name
@@ -53,7 +53,7 @@ class Chair(models.Model):
 
 
 class Department(models.Model):
-    name = models.CharField(_('Наименование кафедры'), max_length=100)
+    name = models.CharField(_('Наименование кафедры'), max_length=100, unique=True)
     chair = models.ForeignKey(Chair, on_delete=models.RESTRICT, verbose_name='Наименование института/факультета')
 
     def __str__(self) -> str:
@@ -70,7 +70,7 @@ class Program(models.Model):
 
 class Major(models.Model):
     name = models.CharField(_('Наименование направления подготовки'), max_length=100)
-    code = models.CharField(_('Код'), max_length=12)
+    code = models.CharField(_('Код'), max_length=12, unique=True)
     programs = models.ManyToManyField(Program, related_name='major_programs',
                                       verbose_name='Программы подготовки')
 
@@ -212,7 +212,7 @@ class Course(models.Model):
 
 
 class QuestionSection(models.Model):
-    evaluation_test = models.ForeignKey('sdo_app.EvaluationTest', on_delete=models.RESTRICT,
+    evaluation_test = models.ForeignKey('sdo_app.EvaluationTest', on_delete=models.CASCADE,
                                         verbose_name='Оценочный тест')
     question = models.TextField(verbose_name='Вопрос')
 
@@ -231,12 +231,14 @@ class QuestionAnswers(models.Model):
     is_correct = models.BooleanField(default=False, verbose_name='Это верный ответ')
     score = models.FloatField(default=0.0, verbose_name='Получаемый балл', validators=[validate_positive_score])
 
+    def __str__(self) -> str:
+        return f'Ответ на вопрос {self.question_section.question}'
+
 
 class EvaluationTest(BaseTask):
     title = models.TextField(_('Наименование оценочной работы'))
-    question_sections = models.ManyToManyField(QuestionSection, related_name='questions', verbose_name='Вопросы')
-    start_time = models.DateTimeField(_('Дата начала оценочной работы студентом'))
-    end_time = models.DateTimeField(_('Дата завершения оценочной работы студентом'))
+    start_time = models.DateTimeField(_('Дата начала оценочной работы студентом'), null=True, blank=True)
+    end_time = models.DateTimeField(_('Дата завершения оценочной работы студентом'), null=True, blank=True)
     allowed_attempts = models.IntegerField(_('Разрешенное количество попыток'), default=1)
     complete_time = models.IntegerField(_('Время на выполнение(мин.)'))
 

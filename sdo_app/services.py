@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, Type
+from typing import Dict, Iterable, Type, List, Union
 
 from django.db.models.base import Model
 from django.db.models import QuerySet
@@ -17,19 +17,26 @@ class BaseService:
         self.__model__ = model
         self.__serializer__ = serializer
 
-    def get(self, pk: int) -> Type[Model] | None:
+    def get(self, pk: int) -> Model | None:
         model_obj: Model = self.__model__.objects.filter(pk=pk).first()
-        return self.__serializer__(model_obj).data if model_obj else None
+        return model_obj
 
-    def list(self) -> QuerySet[Model] | None:
+    def list(self) -> dict | None:
         model_obj_list: QuerySet[Model] = self.__model__.objects.all()
         return self.__serializer__(model_obj_list, many=True).data if len(model_obj_list) != 0 else None
 
-    def create(self, request_data) -> Type[Model]:
+    def create(self, request_data) -> Model:
         serializer = self.__serializer__(data=request_data)
 
         if serializer.is_valid(raise_exception=True):
             return self.__model__.objects.create(**serializer.validated_data)
+
+    def create_many(self, request_data) -> List[Model]:
+        serializer = self.__serializer__(data=request_data, many=True)
+
+        if serializer.is_valid(raise_exception=True):
+            return self.__model__.objects.bulk_create([self.__model__(**validated_data)
+                                                       for _, validated_data in enumerate(serializer.validated_data)])
 
     def update(self, pk: int, request_data) -> int:
         serializer = self.__serializer__(data=request_data, partial=True)
@@ -40,9 +47,29 @@ class BaseService:
     def delete(self, pk: int):
         return self.__model__.objects.get(pk=pk).delete()
 
+    def validate_data(self, data) -> dict:
+        model_serializer = self.__serializer__(data=data, many=isinstance(data, list))
+
+        if model_serializer.is_valid(raise_exception=True):
+            return model_serializer.validated_data
+
+    def to_serialize(self, data: Union[Model, List[Model]]):
+        return self.__serializer__(data, many=isinstance(data, list)).data
+
+    def is_exist(self, pk: int) -> bool:
+        return self.__model__.objects.filter(pk=pk).exists()
+
     @property
     def serializer(self) -> Type[Serializer]:
         return self.__serializer__
+
+    @property
+    def serializer_data(self):
+        return self.__serializer__.data
+
+    @property
+    def serializer_validated_data(self):
+        return self.__serializer__.validated_data
 
 
 class ChairService(BaseService):

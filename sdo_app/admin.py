@@ -1,6 +1,6 @@
 from django.contrib import admin
 from sdo_app.models import (Student, Subject, StudyGroup, StudentResult, Person, Program, Department, Major, Teacher,
-                            Practice, Lecture, Module, Course, Chair, EvaluationTest, QuestionSection)
+                            Practice, Lecture, Module, Course, Chair, EvaluationTest, QuestionSection, QuestionAnswers)
 
 admin.site.register(Chair)
 admin.site.register(Course)
@@ -18,3 +18,4 @@ admin.site.register(Student)
 admin.site.register(StudentResult)
 admin.site.register(Teacher)
 admin.site.register(QuestionSection)
+admin.site.register(QuestionAnswers)
