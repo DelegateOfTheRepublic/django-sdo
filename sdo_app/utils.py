@@ -1,5 +1,5 @@
 def course_dir_path(instance, filename) -> str:
-    module = instance.module_lectures.all()[0]
+    module = instance.module
     course = module.course_modules.all()[0]
     return f'courses/{course}/module_{module}/lecture_{instance}/{filename}'
 

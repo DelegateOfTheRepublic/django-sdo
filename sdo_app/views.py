@@ -32,21 +32,28 @@ class BaseAPIView(APIView):
 
         return JsonResponse(self.__model_service__.list(), safe=False)
 
+    def post(self, request: Request) -> JsonResponse:
+        model_obj = self.__model_service__.create(request.data)
+
+        if model_obj is None:
+            return JsonResponse({'code': status.HTTP_400_BAD_REQUEST})
+
+        return JsonResponse({'code': status.HTTP_201_CREATED, 'data': self.__model_service__.to_serialize(model_obj)})
+
     def patch(self, request: Request) -> JsonResponse:
         model_id: int | None = request.query_params.get('id', None)
 
         if not self.__model_service__.is_exist(model_id):
             return JsonResponse({'code': status.HTTP_404_NOT_FOUND})
 
-        upd_status: int = self.__model_service__.update(model_id, request.data)
-        return JsonResponse({'code': status.HTTP_200_OK}) if upd_status != 0 \
-            else JsonResponse({'code': status.HTTP_400_BAD_REQUEST})
+        self.__model_service__.update(model_id, request.data)
+        return JsonResponse({'code': status.HTTP_200_OK})
 
     def delete(self, request: Request) -> JsonResponse:
         model_id: int | None = request.query_params.get('id', None)
 
         if self.__model_service__.is_exist(model_id):
-            self.__model_service__.delete(model_id)
+            self.__model_service__.delete(model_id, request.data)
 
             return JsonResponse({'code': status.HTTP_204_NO_CONTENT})
 
@@ -141,9 +148,16 @@ class EvaluationTestAPIView(BaseAPIView):
             return JsonResponse({'code': status.HTTP_400_BAD_REQUEST, 'error_text': ie})
 
 
+class LectureAPIView(BaseAPIView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(LectureService)
+
+
+class ModuleAPIView(BaseAPIView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(ModuleService)
+
+
 class CourseAPIView(BaseAPIView):
     def __init__(self, *args, **kwargs):
         super().__init__(CourseService)
-
-    def post(self, request: Request) -> JsonResponse:
-        pass

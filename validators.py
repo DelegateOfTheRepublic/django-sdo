@@ -11,7 +11,8 @@ def validate_lecture_materials_file(value):
     import json
     from django.core.exceptions import ValidationError
 
-    lecture_materials: dict = json.loads(value.file.open('r').read())
+    lecture_materials: dict = json.loads(value.file.open('r').read()) if hasattr(value.file, 'open') \
+        else json.load(value.file)
 
     for key in lecture_materials.keys():
         if key not in ['text', 'files', 'links']:
@@ -22,7 +23,8 @@ def validate_eval_criteria_file(value):
     import json
     from django.core.exceptions import ValidationError
 
-    eval_criteria: dict = json.loads(value.file.open('r').read())
+    eval_criteria: dict = json.loads(value.file.open('r').read()) if hasattr(value.file, 'open') \
+        else json.load(value.file)
 
     for key in eval_criteria.keys():
         if key not in ['credit', 'grades']:
@@ -61,4 +63,3 @@ def validate_positive_score(value):
 
     if value < 0:
         raise ValidationError('Positive score must be greater than or equal to 0.')
-

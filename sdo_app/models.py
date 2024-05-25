@@ -5,8 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from django.db import models
 
 from .utils import course_dir_path, description_file_path, answer_file_path, eval_criteria_file_path
-from validators import validate_deadline_date, validate_lecture_materials_file, validate_positive_score, \
-    validate_eval_criteria_file
+from validators import validate_deadline_date, validate_positive_score, validate_eval_criteria_file
 
 
 class BaseTask(models.Model):
@@ -122,10 +121,11 @@ class Lecture(models.Model):
     title = models.TextField(_('Наименование лекции'))
     is_read = models.BooleanField(default=False, verbose_name='Прочтена ли лекция?')
     deadline_date = models.DateField(_('Крайний срок завершения'), validators=[validate_deadline_date])
-    materials = models.FileField(_('Материалы лекции'), upload_to=course_dir_path, blank=True,
-                                 validators=[FileExtensionValidator(['json']), validate_lecture_materials_file])
+    materials = models.FileField(_('Материалы лекции'), upload_to=course_dir_path,
+                                 validators=[FileExtensionValidator(['md'])])
+    module = models.ForeignKey('sdo_app.Module', on_delete=models.RESTRICT, verbose_name='Модуль')
     practice = models.ForeignKey('sdo_app.Practice', on_delete=models.RESTRICT, blank=True, null=True,
-                                 verbose_name='Задание/еонтрольная работа')
+                                 verbose_name='Задание/контрольная работа')
     evaluation_test = models.ForeignKey('sdo_app.EvaluationTest', on_delete=models.RESTRICT, blank=True, null=True,
                                         verbose_name='Оценочный тест')
 
@@ -163,52 +163,64 @@ class StudentResult(models.Model):
 
         if self.by_course:
             if self.by_course.evaluation_test:
-                to_print = to_print.replace('XXX', 'итоговому тесту курса')
+                to_print = to_print.replace('XXX', 'тесту курса')
 
-            to_print = to_print.replace('XXX', 'итоговой работе курса')
+            to_print = to_print.replace('XXX', 'практической работе курса')
 
         if self.by_module:
             if self.by_module.evaluation_test:
-                to_print = to_print.replace('XXX', 'итоговому тесту модуля')
+                to_print = to_print.replace('XXX', 'тесту модуля')
 
-            to_print = to_print.replace('XXX', 'итоговой работе модуля')
+            to_print = to_print.replace('XXX', 'практической работе модуля')
 
         if self.by_lecture:
             if self.by_lecture.evaluation_test:
-                to_print = to_print.replace('XXX', 'итоговому тесту лекции')
+                to_print = to_print.replace('XXX', 'тесту лекции')
 
-            to_print = to_print.replace('XXX', 'итоговой работу лекции')
+            to_print = to_print.replace('XXX', 'практической работе лекции')
 
         return to_print
+
+    @property
+    def eval_test(self) -> 'EvaluationTest':
+        return self.by_course.evaluation_test or self.by_module.evaluation_test or self.by_lecture.evaluation_test
+
+    @property
+    def practice(self) -> 'Practice':
+        return self.by_course.practice or self.by_module.practice or self.by_lecture.practice
 
 
 class Module(models.Model):
     title = models.CharField(_('Наименование модуля'), max_length=32)
-    lectures = models.ManyToManyField(Lecture, related_name='module_lectures', verbose_name='Лекции', blank=True)
     practice = models.ForeignKey(Practice, on_delete=models.RESTRICT, verbose_name='Контрольная работа',
-                                 blank=True)
+                                 blank=True, null=True)
     evaluation_test = models.ForeignKey('sdo_app.EvaluationTest', on_delete=models.RESTRICT,
-                                        verbose_name='Контрольный тест', blank=True)
+                                        verbose_name='Контрольный тест', blank=True, null=True)
 
     def __str__(self) -> str:
         return self.title
 
+    @property
+    def lectures(self) -> QuerySet[Lecture]:
+        return Lecture.objects.filter(module__id=self.id)
+
 
 class Course(models.Model):
-    title = models.TextField(_('Наименование курса'))
+    title = models.TextField(_('Наименование курса'), unique=True)
     teacher = models.ForeignKey(Teacher, on_delete=models.RESTRICT, verbose_name='Преподаватель')
     majors = models.ManyToManyField(Major, related_name='course_majors', verbose_name='Направления подготовки')
     evaluation_criteria = models.FileField(_('Критерии оценивания'), upload_to=eval_criteria_file_path,
                                            validators=[validate_eval_criteria_file])
-    members = models.ManyToManyField(StudyGroup, related_name='course_members', verbose_name='Участники курса')
-    modules = models.ManyToManyField(Module, related_name='course_modules', verbose_name='Модули')
+    members = models.ManyToManyField(StudyGroup, related_name='course_members', verbose_name='Участники курса',
+                                     blank=True)
+    modules = models.ManyToManyField(Module, related_name='course_modules', verbose_name='Модули', blank=True)
     practice = models.ForeignKey(Practice, on_delete=models.RESTRICT, blank=True, null=True,
                                  verbose_name='Итоговая работа')
     evaluation_test = models.ForeignKey('sdo_app.EvaluationTest', on_delete=models.RESTRICT, blank=True, null=True,
                                         verbose_name='Итоговый тест')
 
     def __str__(self) -> str:
-        return f'{self.title} для {', '.join(major.__str__() for major in self.majors.all())}'
+        return f'{self.title}'
 
 
 class QuestionSection(models.Model):
