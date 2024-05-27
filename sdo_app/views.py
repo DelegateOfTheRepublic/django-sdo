@@ -104,6 +104,32 @@ class StudentResultAPIView(BaseAPIView):
     def __init__(self, *args, **kwargs):
         super().__init__(StudentResultService)
 
+    def get(self, request: Request) -> JsonResponse:
+        query_params = request.query_params
+        if query_params.get('student'):
+            if query_params['evaluation_test'] or query_params['practice']:
+                student_id: int = query_params.get('student')
+                evaluation_test_id: int | None = query_params.get('evaluation_test')
+                practice_id: int | None = query_params.get('practice')
+
+                final_score_id: int | None = StudentResultService().get_final_result(student_id, evaluation_test_id,
+                                                                                     practice_id)
+
+                if not final_score_id:
+                    return JsonResponse({'code': status.HTTP_204_NO_CONTENT})
+
+                return JsonResponse({'student_results': StudentResultService().
+                                    to_serialize(StudentResultService().get_by(student=query_params['student'],
+                                                                               evaluation_test=query_params.
+                                                                               get('evaluation_test'),
+                                                                               practice=query_params.
+                                                                               get('practice'))),
+                                    'final_score_id': final_score_id}, safe=False)
+            else:
+                return JsonResponse({'code': status.HTTP_400_BAD_REQUEST})
+
+        return super().get(request)
+
 
 class QuestionSectionAPIView(BaseAPIView):
     def __init__(self, *args, **kwargs):
@@ -121,6 +147,15 @@ class EvaluationTestAPIView(BaseAPIView):
 
     def post(self, request: Request) -> JsonResponse:
         data: dict = {**request.data}
+
+        if request.query_params.get('id', None):
+            evaluation_test_id: int = request.query_params['id']
+            student_id: int = request.data['student']
+            answers: list = request.data['answers']
+
+            return JsonResponse({'code': status.HTTP_200_OK,
+                                 'student_score': EvaluationTestService().check(student_id, evaluation_test_id,
+                                                                                answers)})
 
         question_sections: list = data.pop('question_sections', [])
 
@@ -146,6 +181,48 @@ class EvaluationTestAPIView(BaseAPIView):
                                  'evaluation_test': EvaluationTestService().to_serialize(e_test_obj)})
         except IntegrityError as ie:
             return JsonResponse({'code': status.HTTP_400_BAD_REQUEST, 'error_text': ie})
+
+    def patch(self, request: Request) -> JsonResponse:
+        if request.data.get('question', None):
+            evaluation_test_id: int = request.query_params.get('id')
+
+            if StudentResultService().get_by(evaluation_test_id=evaluation_test_id) is None:
+                return JsonResponse({'code': status.HTTP_400_BAD_REQUEST})
+
+            question_data: dict | list = request.data['question']
+
+            if isinstance(question_data, list):
+                for _, answer_data in enumerate(question_data):
+                    if not QuestionAnswersService().is_exist(answer_data.get('answer_id')):
+                        return JsonResponse({'code': status.HTTP_404_NOT_FOUND})
+
+                    QuestionAnswersService().update(answer_data.pop('answer_id'), answer_data)
+                return JsonResponse({'code': status.HTTP_200_OK})
+
+            if not QuestionAnswersService().is_exist(question_data['answer_id']):
+                return JsonResponse({'code': status.HTTP_404_NOT_FOUND})
+
+            QuestionAnswersService().update(question_data.pop('answer_id'), question_data)
+            return JsonResponse({'code': status.HTTP_200_OK})
+
+        return super().patch(request)
+
+
+class PracticeAPIView(BaseAPIView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(PracticeService)
+
+    def post(self, request: Request) -> JsonResponse:
+        if request.query_params.get('id'):
+            practice_id: int = request.query_params['id']
+            student_id: int = request.data['student']
+            score: float = request.data['score']
+
+            PracticeService().check(student_id, practice_id, score)
+
+            return JsonResponse({'code': status.HTTP_200_OK})
+
+        return super().post(request)
 
 
 class LectureAPIView(BaseAPIView):

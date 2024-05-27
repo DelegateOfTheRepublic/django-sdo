@@ -3,7 +3,7 @@ import shutil
 from typing import Dict, Iterable, Type, List, Union
 
 from django.db.models.base import Model
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Q
 from rest_framework.serializers import Serializer
 
 from sdo_core.settings import BASE_DIR, MEDIA_DIR
@@ -137,9 +137,41 @@ class EvaluationTestService(BaseService):
     def __init__(self):
         super().__init__(EvaluationTest, EvaluationTestSerializer)
 
-    def check(self, student_id: int, test_by: Union[Course, Module, Lecture], answers: list[dict[str, int]]):
+    def check(self, student_id: int, evaluation_test_id: int, answers: list) -> float:
         student_score: float = 0.0
-        pass
+        eval_test_answers: QuerySet[QuestionAnswers] = EvaluationTest.objects.get(pk=evaluation_test_id).answers
+        student: Student = Student.objects.get(pk=student_id)
+
+        for _, answer in enumerate(answers):
+            if isinstance(answer['answer'], list):
+                for answer_id in answer['answer']:
+                    eval_test_answer: QuestionAnswers = eval_test_answers.filter(pk=answer_id,
+                                                                                 question_section_id=
+                                                                                 answer['question_section']).first()
+
+                    if eval_test_answer:
+                        student_score += eval_test_answer.score
+
+                continue
+
+            eval_test_answer: QuestionAnswers = eval_test_answers.filter(pk=answer['answer'],
+                                                                         question_section_id=answer['question_section']
+                                                                         ).first()
+
+            if eval_test_answer:
+                student_score += eval_test_answer.score
+
+        student_result: StudentResult = StudentResult.objects.filter(student_id=student_id,
+                                                                     evaluation_test_id=evaluation_test_id).last()
+        if student_result:
+            StudentResult.objects.create(student=student_result.student, is_completed=True, score=student_score,
+                                         evaluation_test=student_result.evaluation_test,
+                                         attempt=student_result.attempt + 1)
+        else:
+            StudentResult.objects.create(student=student, is_completed=True, score=student_score,
+                                         evaluation_test=self.get(evaluation_test_id))
+
+        return student_score
 
 
 class LectureService(BaseService):
@@ -171,6 +203,19 @@ class PracticeService(BaseService):
     def __init__(self):
         super().__init__(Practice, PracticeSerializer)
 
+    def check(self, student_id: int, practice_id: int, score: float):
+        student: Student = Student.objects.get(pk=student_id)
+
+        student_result: StudentResult = StudentResult.objects.filter(student_id=student_id,
+                                                                     practice_id=practice_id).last()
+        if student_result:
+            StudentResult.objects.create(student=student_result.student, is_completed=True, score=score,
+                                         practice=student_result.practice,
+                                         attempt=student_result.attempt + 1)
+        else:
+            StudentResult.objects.create(student=student, is_completed=True, score=score,
+                                         evaluation_test=self.get(practice_id))
+
 
 class SubjectService(BaseService):
     def __init__(self):
@@ -185,6 +230,27 @@ class StudentService(BaseService):
 class StudentResultService(BaseService):
     def __init__(self):
         super().__init__(StudentResult, StudentResultSerializer)
+
+    def get_final_result(self, student_id: int = None, evaluation_test_id: int = None, practice_id: int = None) -> int | None:
+        if evaluation_test_id:
+            return EvaluationTest.objects.get(pk=evaluation_test_id).get_final_attempt(student_id)
+
+        return Practice.objects.get(pk=practice_id).get_final_attempt(student_id)
+
+    def get_by(self, **kwargs) -> QuerySet[Model] | None:
+        if kwargs.get('evaluation_test_id'):
+            return StudentResult.objects.filter(evaluation_test_id=kwargs.get('evaluation_test_id'))
+        elif kwargs.get('practice_id'):
+            return StudentResult.objects.filter(practice_id=kwargs.get('practice_id'))
+        elif kwargs.get('student'):
+            if kwargs.get('evaluation_test'):
+                return StudentResult.objects.filter(student_id=kwargs.get('student'),
+                                                    evaluation_test_id=kwargs.get('evaluation_test'))
+            elif kwargs.get('practice'):
+                return StudentResult.objects.filter(student_id=kwargs.get('student'),
+                                                    practice_id=kwargs.get('practice'))
+
+        return None
 
 
 class StudyGroupService(BaseService):
@@ -205,3 +271,9 @@ class QuestionSectionService(BaseService):
 class QuestionAnswersService(BaseService):
     def __init__(self):
         super().__init__(QuestionAnswers, QuestionAnswersSerializer)
+
+    def update(self, pk: int, request_data) -> int:
+        if not request_data['is_correct']:
+            request_data['score'] = 0.0
+
+        return super().update(pk, request_data)

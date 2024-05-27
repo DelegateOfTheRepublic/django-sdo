@@ -106,22 +106,26 @@ class CourseSerializer(serializers.ModelSerializer):
 
 
 class EvaluationTestSerializer(serializers.ModelSerializer):
+    answers = serializers.SerializerMethodField('get_answers')
+
     class Meta:
         model = EvaluationTest
         fields = ['id', 'title', 'max_score', 'deadline_date', 'start_time', 'end_time',
-                  'allowed_attempts', 'complete_time', 'final_score_is']
+                  'allowed_attempts', 'complete_time', 'final_score_is', 'answers']
+
+    def get_answers(self, instance):
+        return QuestionAnswersSerializer(instance.answers, many=True).data
 
 
 class StudentResultSerializer(serializers.ModelSerializer):
     student = serializers.PrimaryKeyRelatedField(queryset=Student.objects.all())
-    by_course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all())
-    by_module = serializers.PrimaryKeyRelatedField(queryset=Module.objects.all())
-    by_lecture = serializers.PrimaryKeyRelatedField(queryset=Lecture.objects.all())
+    evaluation_test = serializers.PrimaryKeyRelatedField(queryset=EvaluationTest.objects.all(), required=False)
+    practice = serializers.PrimaryKeyRelatedField(queryset=Practice.objects.all(), required=False)
 
     class Meta:
         model = StudentResult
-        fields = ['id', 'student', 'by_course', 'by_module', 'by_lecture', 'eval_test', 'practice', 'is_completed',
-                  'answer_file', 'answer_text', 'score', 'attempt']
+        fields = ['id', 'student', 'evaluation_test', 'practice', 'is_completed', 'answer_file', 'answer_text', 'score',
+                  'attempt']
 
 
 class QuestionSectionSerializer(serializers.ModelSerializer):
@@ -133,10 +137,20 @@ class QuestionSectionSerializer(serializers.ModelSerializer):
         fields = ['id', 'evaluation_test', 'question', 'answers']
 
     def get_answers(self, obj: QuestionSection):
-        return QuestionAnswersSerializer(QuestionAnswers.objects.filter(question_section_id=obj.id), many=True).data
+        return QuestionAnswersSerializer(obj.answers, many=True).data
 
 
 class QuestionAnswersSerializer(serializers.ModelSerializer):
+    question_section = serializers.PrimaryKeyRelatedField(queryset=QuestionSection.objects.all())
+    is_correct = serializers.BooleanField(write_only=True)
+    score = serializers.FloatField(write_only=True)
+
+    class Meta:
+        model = QuestionAnswers
+        fields = ['id', 'question_section', 'answer', 'is_correct', 'score']
+
+
+class TQuestionAnswersSerializer(serializers.ModelSerializer):
     question_section = serializers.PrimaryKeyRelatedField(queryset=QuestionSection.objects.all())
 
     class Meta:

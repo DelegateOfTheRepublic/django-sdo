@@ -1,6 +1,8 @@
+from typing import Union
+
 from django.contrib.auth.models import User
 from django.core.validators import FileExtensionValidator
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Q
 from django.utils.translation import gettext_lazy as _
 from django.db import models
 
@@ -12,11 +14,6 @@ class BaseTask(models.Model):
     class Meta:
         abstract = True
 
-    class ScoreBy(models.TextChoices):
-        COURSE = 'by_course', 'По курсу'
-        MODULE = 'by_module', 'По модулю'
-        LECTURE = 'by_lecture', 'По лекции'
-
     class FinalScoreIs(models.TextChoices):
         BEST_ATTEMPT = 'BA', 'Лучшаяя попытка'
         LAST_ATTEMPT = 'LA', 'Последняя попытка'
@@ -25,16 +22,19 @@ class BaseTask(models.Model):
     final_score_is = models.CharField(max_length=2, default=FinalScoreIs.BEST_ATTEMPT, choices=FinalScoreIs.choices,
                                       verbose_name='Конечный результат оценивается, как')
 
-    def get_student_score(self, student_id: int, score_by: dict[ScoreBy, int]) -> float | None:
-        student_results: QuerySet[StudentResult] = StudentResult.objects.filter(student_id=student_id, **score_by)
+    def get_final_attempt(self, student_id: int) -> int | None:
+        base_task_filter = Q(**{'evaluation_test_id': self.id}) if isinstance(self, EvaluationTest) \
+            else Q(**{'practice_id': self.id})
+
+        student_results: QuerySet[StudentResult] = StudentResult.objects.filter(base_task_filter, student_id=student_id)
 
         if not student_results:
             return None
 
-        if self.final_score_is == self.FinalScoreIs.BEST_ATTEMPT:
-            return student_results.order_by('-score').first().score
+        if self.final_score_is == BaseTask.FinalScoreIs.BEST_ATTEMPT:
+            return student_results.order_by('-score').first().id
 
-        return student_results.last().score
+        return student_results.last().id
 
 
 class Subject(models.Model):
@@ -145,12 +145,10 @@ class Practice(BaseTask):
 
 class StudentResult(models.Model):
     student = models.ForeignKey(Student, on_delete=models.RESTRICT, verbose_name='Студент')
-    by_course = models.ForeignKey('sdo_app.Course', on_delete=models.RESTRICT, verbose_name='По курсу', blank=True,
-                                  null=True)
-    by_module = models.ForeignKey('sdo_app.Module', on_delete=models.RESTRICT, verbose_name='По модулю', blank=True,
-                                  null=True)
-    by_lecture = models.ForeignKey('sdo_app.Lecture', on_delete=models.RESTRICT, verbose_name='По лекции', blank=True,
-                                   null=True)
+    evaluation_test = models.ForeignKey('EvaluationTest', on_delete=models.RESTRICT, verbose_name='Тест', blank=True,
+                                        null=True)
+    practice = models.ForeignKey('Practice', on_delete=models.RESTRICT, verbose_name='Практическое задание',
+                                 blank=True, null=True)
     is_completed = models.BooleanField(default=False, verbose_name='Выполнено ли задание?')
     answer_file = models.FileField(_('Ответ на задание в виде файла'), upload_to=answer_file_path,
                                    validators=[FileExtensionValidator(['json'])], blank=True)
@@ -159,35 +157,14 @@ class StudentResult(models.Model):
     attempt = models.IntegerField(_('Попытка №'), default=1)
 
     def __str__(self) -> str:
-        to_print: str = f'Баллы студента {self.student} по XXX {self.by_course or self.by_module or self.by_lecture}'
+        to_print: str = f'Результат студента {self.student} по XXX'
 
-        if self.by_course:
-            if self.by_course.evaluation_test:
-                to_print = to_print.replace('XXX', 'тесту курса')
-
-            to_print = to_print.replace('XXX', 'практической работе курса')
-
-        if self.by_module:
-            if self.by_module.evaluation_test:
-                to_print = to_print.replace('XXX', 'тесту модуля')
-
-            to_print = to_print.replace('XXX', 'практической работе модуля')
-
-        if self.by_lecture:
-            if self.by_lecture.evaluation_test:
-                to_print = to_print.replace('XXX', 'тесту лекции')
-
-            to_print = to_print.replace('XXX', 'практической работе лекции')
+        if self.evaluation_test:
+            to_print = to_print.replace('XXX', f'тесту {self.evaluation_test}')
+        else:
+            to_print = to_print.replace('XXX', f'практическому заданию {self.practice}')
 
         return to_print
-
-    @property
-    def eval_test(self) -> 'EvaluationTest':
-        return self.by_course.evaluation_test or self.by_module.evaluation_test or self.by_lecture.evaluation_test
-
-    @property
-    def practice(self) -> 'Practice':
-        return self.by_course.practice or self.by_module.practice or self.by_lecture.practice
 
 
 class Module(models.Model):
@@ -232,8 +209,12 @@ class QuestionSection(models.Model):
         return f'Вопрос по тесту {self.evaluation_test}'
 
     @property
+    def answers(self) -> QuerySet['QuestionAnswers']:
+        return QuestionAnswers.objects.filter(question_section_id=self.id)
+
+    @property
     def max_score(self) -> float:
-        question_answers: QuerySet[QuestionAnswers] = QuestionAnswers.objects.filter(question_section_id=self.id)
+        question_answers: QuerySet[QuestionAnswers] = self.answers
         return sum(question_answer.score for question_answer in question_answers)
 
 
@@ -256,6 +237,10 @@ class EvaluationTest(BaseTask):
 
     def __str__(self) -> str:
         return self.title
+
+    @property
+    def answers(self) -> QuerySet[QuestionAnswers]:
+        return QuestionAnswers.objects.filter(question_section__evaluation_test_id=self.id, is_correct=True)
 
     @property
     def max_score(self) -> float:

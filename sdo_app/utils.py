@@ -5,13 +5,7 @@ def course_dir_path(instance, filename) -> str:
 
 
 def answer_file_path(instance, filename) -> str:
-    module = instance.module_lectures.all()[0]
-    course = module.course_modules.all()[0]
-
-    if instance.by_lecture:
-        return f'courses/{course}/module_{module}/practice_{instance}/lecture_{instance.by_lecture}/{filename}'
-
-    return f'courses/{course}/module_{module}/practice_{instance}/{filename}'
+    return f'practices/{instance}/{filename}'
 
 
 def description_file_path(instance, filename) -> str:
